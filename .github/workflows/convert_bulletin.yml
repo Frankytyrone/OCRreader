@@ -31,7 +31,7 @@ jobs:
         run: echo "today=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
       - name: Run OCR and generate HTML
-        run: python convert_bulletin.py merged.pdf ${{ steps.date.outputs.today }}
+        run: python convert_bulletin.py 26thapril2026.pdf ${{ steps.date.outputs.today }}
 
       - name: Commit the generated HTML back to the repo
         run: |
