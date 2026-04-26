@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""
-convert_bulletin.py
-Converts a scanned PDF bulletin to a styled, scrollable HTML file.
-
-Usage:
-    python convert_bulletin.py <pdf_file> <YYYY-MM-DD>
-
-Example:
-    python convert_bulletin.py merged.pdf 2026-04-26
-"""
-
 import sys
 import os
 import base64
@@ -53,12 +42,6 @@ HTML_TEMPLATE = """\
 </html>
 """
 
-
-def pdf_to_images(pdf_path):
-    """Convert each page of the PDF to a PIL image."""
-    return convert_from_path(pdf_path, dpi=200)
-
-
 OCR_PROMPT = (
     "You are an OCR assistant. Extract ALL text from this scanned document page exactly as it appears. "
     "Preserve the layout as much as possible. The document may contain both English and Irish (Gaeilge) text "
@@ -66,56 +49,49 @@ OCR_PROMPT = (
 )
 
 
+def pdf_to_images(pdf_path):
+    return convert_from_path(pdf_path, dpi=200)
+
+
 def ocr_images(images):
-    """Use GPT-4o Vision to extract text from a list of PIL images."""
     client = OpenAI(
         base_url="https://models.inference.ai.azure.com",
         api_key=os.environ["GITHUB_TOKEN"],
     )
     pages_text = []
     for i, image in enumerate(images, start=1):
-        print(f"  OCR on page {i}/{len(images)} …", flush=True)
+        print(f"  OCR on page {i}/{len(images)} ...", flush=True)
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         buffer.close()
-        print(f"  Image size: {image.size}, base64 length: {len(b64)}", flush=True)
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": OCR_PROMPT},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{b64}"},
-                            },
-                        ],
-                    }
-                ],
-            )
-            text = response.choices[0].message.content or ""
-        except Exception as exc:
-            print(f"  GPT-4o Vision API error on page {i}: {exc}", flush=True)
-            raise
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": OCR_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{b64}"},
+                        },
+                    ],
+                }
+            ],
+        )
+        text = response.choices[0].message.content or ""
         lines = [line for line in text.splitlines() if line.strip()]
         pages_text.append(lines)
     return pages_text
 
 
 def build_html_content(pages_text):
-    """Turn the list-of-lists of text into HTML paragraphs grouped by page."""
     parts = []
     for i, lines in enumerate(pages_text, start=1):
         parts.append(f"<h2>Page {i}</h2>")
         for line in lines:
-            escaped = (
-                line.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-            )
+            escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts.append(f"<p>{escaped}</p>")
     return "\n".join(parts)
 
@@ -132,16 +108,15 @@ def main():
         print(f"Error: '{pdf_file}' not found.")
         sys.exit(1)
 
-    print(f"Converting '{pdf_file}' for date {date} …")
-
-    print("Step 1/3 — Converting PDF pages to images …")
+    print(f"Converting '{pdf_file}' for date {date} ...")
+    print("Step 1/3 — Converting PDF pages to images ...")
     images = pdf_to_images(pdf_file)
     print(f"  {len(images)} page(s) found.")
 
-    print("Step 2/3 — Running GPT-4o Vision OCR …")
+    print("Step 2/3 — Running GPT-4o Vision OCR ...")
     pages_text = ocr_images(images)
 
-    print("Step 3/3 — Building HTML …")
+    print("Step 3/3 — Building HTML ...")
     content = build_html_content(pages_text)
 
     output_filename = f"bulletin-{date}.html"
