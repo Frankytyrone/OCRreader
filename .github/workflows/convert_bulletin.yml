@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        run: pip install easyocr pdf2image Pillow
+        run: pip install openai pdf2image Pillow
 
       - name: Get today's date
         id: date
@@ -32,6 +32,8 @@ jobs:
 
       - name: Run OCR and generate HTML
         run: python convert_bulletin.py 26thapril2026.pdf ${{ steps.date.outputs.today }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit the generated HTML back to the repo
         run: |

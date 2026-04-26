@@ -12,8 +12,9 @@ Example:
 
 import sys
 import os
-import tempfile
-import easyocr
+import base64
+import io
+from openai import OpenAI
 from pdf2image import convert_from_path
 
 CSS = """
@@ -58,20 +59,48 @@ def pdf_to_images(pdf_path):
     return convert_from_path(pdf_path, dpi=200)
 
 
+OCR_PROMPT = (
+    "You are an OCR assistant. Extract ALL text from this scanned document page exactly as it appears. "
+    "Preserve the layout as much as possible. The document may contain both English and Irish (Gaeilge) text "
+    "- extract both faithfully without translating or modifying either language."
+)
+
+
 def ocr_images(images):
-    """Run EasyOCR on a list of PIL images and return extracted text per page."""
-    reader = easyocr.Reader(["en", "ga"], gpu=False)
+    """Use GPT-4o Vision to extract text from a list of PIL images."""
+    client = OpenAI(
+        base_url="https://models.inference.ai.azure.com",
+        api_key=os.environ["GITHUB_TOKEN"],
+    )
     pages_text = []
     for i, image in enumerate(images, start=1):
         print(f"  OCR on page {i}/{len(images)} …", flush=True)
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        buffer.close()
         try:
-            os.close(tmp_fd)
-            image.save(tmp_path, format="PNG")
-            results = reader.readtext(tmp_path, detail=0, paragraph=True)
-        finally:
-            os.remove(tmp_path)
-        pages_text.append(results)
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": OCR_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{b64}"},
+                            },
+                        ],
+                    }
+                ],
+            )
+            text = response.choices[0].message.content or ""
+        except Exception as exc:
+            print(f"  Warning: GPT-4o Vision API error on page {i}: {exc}", flush=True)
+            text = ""
+        lines = [line for line in text.splitlines() if line.strip()]
+        pages_text.append(lines)
     return pages_text
 
 
@@ -108,7 +137,7 @@ def main():
     images = pdf_to_images(pdf_file)
     print(f"  {len(images)} page(s) found.")
 
-    print("Step 2/3 — Running EasyOCR (this may take a few minutes) …")
+    print("Step 2/3 — Running GPT-4o Vision OCR …")
     pages_text = ocr_images(images)
 
     print("Step 3/3 — Building HTML …")
