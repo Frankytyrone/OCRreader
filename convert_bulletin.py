@@ -99,7 +99,7 @@ def ocr_images(images):
             text = response.choices[0].message.content or ""
         except Exception as exc:
             print(f"  GPT-4o Vision API error on page {i}: {exc}", flush=True)
-            raise exc
+            raise
         lines = [line for line in text.splitlines() if line.strip()]
         pages_text.append(lines)
     return pages_text
