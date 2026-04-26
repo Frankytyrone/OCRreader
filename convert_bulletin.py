@@ -79,6 +79,7 @@ def ocr_images(images):
         image.save(buffer, format="PNG")
         b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         buffer.close()
+        print(f"  Image size: {image.size}, base64 length: {len(b64)}", flush=True)
         try:
             response = client.chat.completions.create(
                 model="gpt-4o",
@@ -97,8 +98,8 @@ def ocr_images(images):
             )
             text = response.choices[0].message.content or ""
         except Exception as exc:
-            print(f"  Warning: GPT-4o Vision API error on page {i}: {exc}", flush=True)
-            text = ""
+            print(f"  GPT-4o Vision API error on page {i}: {exc}", flush=True)
+            raise
         lines = [line for line in text.splitlines() if line.strip()]
         pages_text.append(lines)
     return pages_text
