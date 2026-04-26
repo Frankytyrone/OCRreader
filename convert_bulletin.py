@@ -12,6 +12,7 @@ Example:
 
 import sys
 import os
+import tempfile
 import easyocr
 from pdf2image import convert_from_path
 
@@ -63,7 +64,13 @@ def ocr_images(images):
     pages_text = []
     for i, image in enumerate(images, start=1):
         print(f"  OCR on page {i}/{len(images)} …", flush=True)
-        results = reader.readtext(image, detail=0, paragraph=True)
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
+        try:
+            os.close(tmp_fd)
+            image.save(tmp_path, format="PNG")
+            results = reader.readtext(tmp_path, detail=0, paragraph=True)
+        finally:
+            os.remove(tmp_path)
         pages_text.append(results)
     return pages_text
 
