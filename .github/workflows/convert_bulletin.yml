@@ -36,7 +36,7 @@ jobs:
       - name: Find the PDF that was just uploaded
         id: find_pdf
         run: |
-          CHANGED_PDF=$(git diff --name-only HEAD~1 HEAD -- "*.pdf" | head -n 1)
+          CHANGED_PDF=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- "*.pdf" | head -n 1)
           if [ -z "$CHANGED_PDF" ]; then
             echo "No PDF found in this push. Exiting."
             exit 1
