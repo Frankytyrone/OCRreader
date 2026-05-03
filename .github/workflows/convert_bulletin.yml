@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Install poppler-utils (required by pdf2image)
         run: sudo apt-get update && sudo apt-get install -y poppler-utils
@@ -31,8 +33,19 @@ jobs:
         id: date
         run: echo "today=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
+      - name: Find the PDF that was just uploaded
+        id: find_pdf
+        run: |
+          CHANGED_PDF=$(git diff --name-only HEAD~1 HEAD -- "*.pdf" | head -n 1)
+          if [ -z "$CHANGED_PDF" ]; then
+            echo "No PDF found in this push. Exiting."
+            exit 1
+          fi
+          echo "Found PDF: $CHANGED_PDF"
+          echo "pdf_file=$CHANGED_PDF" >> "$GITHUB_OUTPUT"
+
       - name: Run OCR and generate HTML
-        run: python convert_bulletin.py 26thapril2026.pdf ${{ steps.date.outputs.today }}
+        run: python convert_bulletin.py "${{ steps.find_pdf.outputs.pdf_file }}" ${{ steps.date.outputs.today }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
