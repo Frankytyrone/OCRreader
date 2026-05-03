@@ -47,7 +47,7 @@ jobs:
       - name: Run OCR and generate HTML
         run: python convert_bulletin.py "${{ steps.find_pdf.outputs.pdf_file }}" ${{ steps.date.outputs.today }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Commit the generated HTML back to the repo
         run: |

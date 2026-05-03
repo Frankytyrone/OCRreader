@@ -55,8 +55,7 @@ def pdf_to_images(pdf_path):
 
 def ocr_images(images):
     client = OpenAI(
-        base_url="https://models.inference.ai.azure.com",
-        api_key=os.environ["GITHUB_TOKEN"],
+        api_key=os.environ["OPENAI_API_KEY"],
     )
     pages_text = []
     for i, image in enumerate(images, start=1):
