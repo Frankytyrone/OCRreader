@@ -6,6 +6,7 @@ import base64
 import io
 import re
 from openai import OpenAI
+# mistralai package layouts differ across versions; support both import paths.
 try:
     from mistralai import Mistral
 except ImportError:
