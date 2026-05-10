@@ -3,6 +3,7 @@ import sys
 import os
 import base64
 import io
+import re
 from openai import OpenAI
 from pdf2image import convert_from_path
 
@@ -21,6 +22,9 @@ CSS = """
     max-height: 90vh;
     overflow-y: auto;
     padding: 32px 40px;
+  }
+  p {
+    margin: 4px 0;
   }
 </style>
 """
@@ -43,20 +47,43 @@ HTML_TEMPLATE = """\
 """
 
 OCR_PROMPT = (
-    "You are an OCR assistant. Extract ALL text from this scanned document page exactly as it appears. "
-    "Preserve the layout as much as possible. The document may contain both English and Irish (Gaeilge) text "
-    "- extract both faithfully without translating or modifying either language."
+    "You are an OCR assistant reading a scanned Irish parish bulletin page. Extract ALL text exactly as it appears. "
+    "Do NOT wrap your response in markdown code fences or backticks. "
+    "The bulletin may have multiple columns, tables, and mixed English and Irish (Gaeilge) text — preserve both "
+    "languages faithfully without translating. Preserve the layout and structure as closely as possible using plain text spacing."
 )
+
+MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
 
 
 def pdf_to_images(pdf_path):
-    return convert_from_path(pdf_path, dpi=200)
+    return convert_from_path(pdf_path, dpi=150)
 
 
 def ocr_images(images):
-    client = OpenAI(
-        api_key=os.environ["OPENAI_API_KEY"],
-    )
+    """Run OCR across images and return (pages_text, provider_summary)."""
+    github_token = os.environ.get("GITHUB_TOKEN")
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+
+    if not github_token and not openai_api_key:
+        print("Error: Neither GITHUB_TOKEN nor OPENAI_API_KEY is set. Please set at least one credential.")
+        sys.exit(1)
+
+    use_github_models = bool(github_token)
+    if use_github_models:
+        client = OpenAI(
+            api_key=github_token,
+            base_url="https://models.inference.ai.azure.com",
+        )
+        provider_used = "GitHub Models"
+    else:
+        print("  GITHUB_TOKEN not set, using OpenAI gpt-4o-mini directly...")
+        client = OpenAI(
+            api_key=openai_api_key,
+        )
+        provider_used = "OpenAI fallback"
+    fallback_used = False
+
     pages_text = []
     for i, image in enumerate(images, start=1):
         print(f"  OCR on page {i}/{len(images)} ...", flush=True)
@@ -64,30 +91,65 @@ def ocr_images(images):
         image.save(buffer, format="PNG")
         b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         buffer.close()
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": OCR_PROMPT},
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": OCR_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{b64}"},
+                            },
+                        ],
+                    }
+                ],
+            )
+        except Exception as e:
+            if use_github_models and openai_api_key:
+                print(
+                    f"  GitHub Models failed on page {i} ({type(e).__name__}: {e}), "
+                    "falling back to OpenAI gpt-4o-mini..."
+                )
+                client = OpenAI(api_key=openai_api_key)
+                use_github_models = False
+                provider_used = "OpenAI fallback"
+                fallback_used = True
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
                         {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{b64}"},
-                        },
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": OCR_PROMPT},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                                },
+                            ],
+                        }
                     ],
-                }
-            ],
-        )
+                )
+            else:
+                raise
         text = response.choices[0].message.content or ""
-        lines = [line for line in text.splitlines() if line.strip()]
+        lines = [
+            line for line in text.splitlines()
+            if line.strip() and not MARKDOWN_FENCE_PATTERN.match(line)
+        ]
         pages_text.append(lines)
-    return pages_text
+    if fallback_used:
+        return pages_text, "GitHub Models + OpenAI fallback"
+    return pages_text, provider_used
 
 
 def build_html_content(pages_text):
     parts = []
     for i, lines in enumerate(pages_text, start=1):
+        if i > 1:
+            parts.append("<hr>")
         parts.append(f"<h2>Page {i}</h2>")
         for line in lines:
             escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -112,8 +174,8 @@ def main():
     images = pdf_to_images(pdf_file)
     print(f"  {len(images)} page(s) found.")
 
-    print("Step 2/3 — Running GPT-4o Vision OCR ...")
-    pages_text = ocr_images(images)
+    print("Step 2/3 — Running gpt-4o-mini Vision OCR ...")
+    pages_text, provider_used = ocr_images(images)
 
     print("Step 3/3 — Building HTML ...")
     content = build_html_content(pages_text)
@@ -125,6 +187,7 @@ def main():
         f.write(html)
 
     print(f"\nDone! Output saved to: {output_filename}")
+    print(f"Summary: Processed {len(images)} page(s) using {provider_used}.")
 
 
 if __name__ == "__main__":
