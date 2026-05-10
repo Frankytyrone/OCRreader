@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
+# Requires: pip install openai pdf2image Pillow mistralai
 import sys
 import os
 import base64
 import io
 import re
 from openai import OpenAI
+# mistralai package layouts differ across versions; support both import paths.
+try:
+    from mistralai import Mistral
+except ImportError:
+    from mistralai.client import Mistral
 from pdf2image import convert_from_path
 
 CSS = """
@@ -60,6 +66,36 @@ def pdf_to_images(pdf_path):
     return convert_from_path(pdf_path, dpi=150)
 
 
+def ocr_with_mistral(pdf_path):
+    """Run Mistral OCR on a PDF and return list of page strings."""
+    api_key = os.environ.get("MISTRAL_API_KEY")
+    if not api_key:
+        raise RuntimeError("MISTRAL_API_KEY is not set.")
+
+    client = Mistral(api_key=api_key)
+
+    with open(pdf_path, "rb") as f:
+        pdf_data = base64.standard_b64encode(f.read()).decode("utf-8")
+
+    ocr_response = client.ocr.process(
+        model="mistral-ocr-latest",
+        document={
+            "type": "document_url",
+            "document_url": f"data:application/pdf;base64,{pdf_data}",
+        },
+    )
+
+    pages = []
+    for page in ocr_response.pages:
+        text = page.markdown or ""
+        lines = [
+            line for line in text.splitlines()
+            if line.strip() and not MARKDOWN_FENCE_PATTERN.match(line)
+        ]
+        pages.append("\n".join(lines))
+    return pages
+
+
 def ocr_images(images):
     """Run OCR across images and return (pages_text, provider_summary)."""
     github_token = os.environ.get("GITHUB_TOKEN")
@@ -71,6 +107,7 @@ def ocr_images(images):
 
     use_github_models = bool(github_token)
     if use_github_models:
+        print("  Using GitHub Models (gpt-4o-mini) for image OCR...")
         client = OpenAI(
             api_key=github_token,
             base_url="https://models.inference.ai.azure.com",
@@ -169,13 +206,44 @@ def main():
         print(f"Error: '{pdf_file}' not found.")
         sys.exit(1)
 
-    print(f"Converting '{pdf_file}' for date {date} ...")
-    print("Step 1/3 — Converting PDF pages to images ...")
-    images = pdf_to_images(pdf_file)
-    print(f"  {len(images)} page(s) found.")
+    mistral_api_key = os.environ.get("MISTRAL_API_KEY")
+    github_token = os.environ.get("GITHUB_TOKEN")
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
 
-    print("Step 2/3 — Running gpt-4o-mini Vision OCR ...")
-    pages_text, provider_used = ocr_images(images)
+    if not mistral_api_key and not github_token and not openai_api_key:
+        print("Error: None of MISTRAL_API_KEY, GITHUB_TOKEN, or OPENAI_API_KEY is set.")
+        print("Please set at least one credential.")
+        sys.exit(1)
+
+    print(f"Converting '{pdf_file}' for date {date} ...")
+    pages_text = None
+    provider_used = None
+
+    if mistral_api_key:
+        print("Step 1/3 — Trying Mistral OCR (mistral-ocr-latest) on PDF ...")
+        try:
+            mistral_pages = ocr_with_mistral(pdf_file)
+            pages_text = [page_text.splitlines() for page_text in mistral_pages]
+            provider_used = "Mistral"
+            print(f"  Mistral OCR succeeded on {len(mistral_pages)} page(s).")
+        except Exception as e:
+            print(f"  Mistral OCR failed ({type(e).__name__}: {e}). Falling back to image OCR...")
+    else:
+        print("Step 1/3 — MISTRAL_API_KEY not set, skipping Mistral OCR ...")
+
+    if pages_text is None:
+        if not github_token and not openai_api_key:
+            print("Error: Mistral OCR was unavailable/failed and no image OCR credentials are set.")
+            print("Set GITHUB_TOKEN and/or OPENAI_API_KEY for fallback OCR.")
+            sys.exit(1)
+        print("Step 1/3 — Converting PDF pages to images ...")
+        images = pdf_to_images(pdf_file)
+        print(f"  {len(images)} page(s) found.")
+
+        print("Step 2/3 — Running image OCR (GitHub Models, then OpenAI fallback) ...")
+        pages_text, provider_used = ocr_images(images)
+    else:
+        print("Step 2/3 — Skipping image OCR because Mistral OCR succeeded.")
 
     print("Step 3/3 — Building HTML ...")
     content = build_html_content(pages_text)
@@ -187,7 +255,7 @@ def main():
         f.write(html)
 
     print(f"\nDone! Output saved to: {output_filename}")
-    print(f"Summary: Processed {len(images)} page(s) using {provider_used}.")
+    print(f"Summary: Processed {len(pages_text)} page(s) using {provider_used}.")
 
 
 if __name__ == "__main__":
