@@ -81,6 +81,7 @@ def ocr_images(images):
             api_key=openai_api_key,
         )
         provider_used = "OpenAI fallback"
+    fallback_used = False
 
     pages_text = []
     for i, image in enumerate(images, start=1):
@@ -107,10 +108,14 @@ def ocr_images(images):
             )
         except Exception as e:
             if use_github_models and openai_api_key:
-                print(f"  GitHub Models failed ({e}), falling back to OpenAI gpt-4o-mini...")
+                print(
+                    f"  GitHub Models failed on page {i} ({type(e).__name__}: {e}), "
+                    "falling back to OpenAI gpt-4o-mini..."
+                )
                 client = OpenAI(api_key=openai_api_key)
                 use_github_models = False
                 provider_used = "OpenAI fallback"
+                fallback_used = True
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
@@ -134,6 +139,8 @@ def ocr_images(images):
             if line.strip() and not MARKDOWN_FENCE_PATTERN.match(line)
         ]
         pages_text.append(lines)
+    if fallback_used:
+        return pages_text, "GitHub Models + OpenAI fallback"
     return pages_text, provider_used
 
 
