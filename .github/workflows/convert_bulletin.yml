@@ -38,13 +38,16 @@ jobs:
         run: |
           CHANGED_PDF=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- "*.pdf" | head -n 1)
           if [ -z "$CHANGED_PDF" ]; then
-            echo "No PDF found in this push. Exiting."
-            exit 1
+            echo "No new PDF found in this push (may be a deletion or non-PDF push). Skipping."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "Found PDF: $CHANGED_PDF"
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
           echo "pdf_file=$CHANGED_PDF" >> "$GITHUB_OUTPUT"
 
       - name: Run OCR and generate HTML
+        if: steps.find_pdf.outputs.skipped != 'true'
         run: python convert_bulletin.py "${{ steps.find_pdf.outputs.pdf_file }}" ${{ steps.date.outputs.today }}
         env:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
@@ -52,6 +55,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Commit the generated HTML back to the repo
+        if: steps.find_pdf.outputs.skipped != 'true'
         run: |
           if ls bulletin-*.html 1>/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
@@ -61,5 +65,4 @@ jobs:
             git push
           else
             echo "No bulletin HTML file found — skipping commit."
-            exit 1
           fi
