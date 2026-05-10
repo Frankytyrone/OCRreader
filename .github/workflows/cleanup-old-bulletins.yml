@@ -1,0 +1,92 @@
+name: Cleanup Old Bulletin Files
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove old bulletin files in repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          pdf_files=("${GITHUB_WORKSPACE}"/*.pdf)
+          html_files=("${GITHUB_WORKSPACE}"/*.html)
+
+          pdf_count=${#pdf_files[@]}
+          html_count=${#html_files[@]}
+
+          cleanup_group() {
+            local label="$1"
+            shift
+            local files=("$@")
+
+            if [[ "${#files[@]}" -le 1 ]]; then
+              echo "Skipping ${label}: only ${#files[@]} file(s)."
+              return
+            fi
+
+            local newest_file=""
+            local newest_ts=-1
+
+            for file_path in "${files[@]}"; do
+              local rel_path
+              rel_path="${file_path#${GITHUB_WORKSPACE}/}"
+
+              local commit_ts
+              commit_ts=$(git log -1 --format=%ct -- "$rel_path" 2>/dev/null || true)
+              if [[ -z "$commit_ts" ]]; then
+                commit_ts=0
+              fi
+
+              local mtime_ts
+              mtime_ts=$(stat -c %Y "$file_path")
+
+              local candidate_ts="$commit_ts"
+              if [[ "$mtime_ts" -gt "$candidate_ts" ]]; then
+                candidate_ts="$mtime_ts"
+              fi
+
+              if [[ "$candidate_ts" -gt "$newest_ts" ]]; then
+                newest_ts="$candidate_ts"
+                newest_file="$file_path"
+              fi
+            done
+
+            echo "Keeping newest ${label}: $(basename "$newest_file")"
+
+            for file_path in "${files[@]}"; do
+              if [[ "$file_path" != "$newest_file" ]]; then
+                git rm -- "${file_path#${GITHUB_WORKSPACE}/}"
+              fi
+            done
+          }
+
+          cleanup_group "PDF" "${pdf_files[@]}"
+          cleanup_group "HTML" "${html_files[@]}"
+
+      - name: Commit cleanup changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo "No old bulletin files to delete."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Auto-cleanup: removed old bulletin files"
+          git push
