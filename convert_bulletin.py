@@ -54,6 +54,11 @@ OCR_PROMPT = (
 )
 
 MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
+EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<]+", re.IGNORECASE)
+PHONE_PATTERN = re.compile(
+    r"(?<!\w)(?:\+353\s*\(0\)\s*\d{1,2}(?:[\s-]?\d{3,4}){1,2}|\+353[\s-]?\d{1,2}(?:[\s-]?\d{3,4}){1,2}|0\d{1,2}(?:[\s-]?\d{3,4}){1,2})(?!\w)"
+)
 
 
 def pdf_to_images(pdf_path):
@@ -145,6 +150,59 @@ def ocr_images(images):
     return pages_text, provider_used
 
 
+def linkify(text):
+    placeholders = []
+
+    def stash(replacement):
+        token = f"__LINKIFY_{len(placeholders)}__"
+        placeholders.append(replacement)
+        return token
+
+    def split_trailing_punctuation(value):
+        trailing = ""
+        while value and value[-1] in ".,;:!?)":
+            trailing = value[-1] + trailing
+            value = value[:-1]
+        return value, trailing
+
+    def replace_email(match):
+        email = match.group(0)
+        return stash(f'<a href="mailto:{email}">{email}</a>')
+
+    def replace_url(match):
+        url = match.group(0)
+        trimmed_url, trailing = split_trailing_punctuation(url)
+        href = trimmed_url if trimmed_url.startswith(("http://", "https://")) else f"https://{trimmed_url}"
+        link = (
+            f'<a href="{href}" target="_blank" rel="noopener noreferrer">'
+            f"{trimmed_url}</a>"
+        )
+        return f"{stash(link)}{trailing}"
+
+    def to_tel_href(display):
+        digits = re.sub(r"\D", "", display)
+        if digits.startswith("353"):
+            national = digits[3:]
+            if national.startswith("0"):
+                national = national[1:]
+            return f"+353{national}"
+        if digits.startswith("0"):
+            return f"+353{digits[1:]}"
+        return f"+{digits}"
+
+    def replace_phone(match):
+        phone = match.group(0)
+        return stash(f'<a href="tel:{to_tel_href(phone)}">{phone}</a>')
+
+    linked = EMAIL_PATTERN.sub(replace_email, text)
+    linked = URL_PATTERN.sub(replace_url, linked)
+    linked = PHONE_PATTERN.sub(replace_phone, linked)
+
+    for i, replacement in enumerate(placeholders):
+        linked = linked.replace(f"__LINKIFY_{i}__", replacement)
+    return linked
+
+
 def build_html_content(pages_text):
     parts = []
     for i, lines in enumerate(pages_text, start=1):
@@ -153,7 +211,7 @@ def build_html_content(pages_text):
         parts.append(f"<h2>Page {i}</h2>")
         for line in lines:
             escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            parts.append(f"<p>{escaped}</p>")
+            parts.append(f"<p>{linkify(escaped)}</p>")
     return "\n".join(parts)
 
 
