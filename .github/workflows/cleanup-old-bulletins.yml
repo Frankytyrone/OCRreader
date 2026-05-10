@@ -28,11 +28,6 @@ jobs:
           pdf_count=${#pdf_files[@]}
           html_count=${#html_files[@]}
 
-          if [[ "$pdf_count" -le 1 && "$html_count" -le 1 ]]; then
-            echo "Nothing to clean: <=1 PDF and <=1 HTML file in repo root."
-            exit 0
-          fi
-
           cleanup_group() {
             local label="$1"
             shift
