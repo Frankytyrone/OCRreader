@@ -60,6 +60,15 @@ OCR_PROMPT = (
 )
 
 MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
+EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<>\"]+", re.IGNORECASE)
+DIGITS_ONLY_PATTERN = re.compile(r"\D")
+PHONE_WITH_COUNTRY_OPTIONAL_TRUNK_PATTERN = r"\+353\s*\(0\)\s*\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
+PHONE_WITH_COUNTRY_PATTERN = r"\+353[\s-]?\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
+PHONE_LOCAL_PATTERN = r"0\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
+PHONE_PATTERN = re.compile(
+    rf"(?<!\w)(?:{PHONE_WITH_COUNTRY_OPTIONAL_TRUNK_PATTERN}|{PHONE_WITH_COUNTRY_PATTERN}|{PHONE_LOCAL_PATTERN})(?!\w)"
+)
 
 
 def pdf_to_images(pdf_path):
@@ -182,6 +191,74 @@ def ocr_images(images):
     return pages_text, provider_used
 
 
+def linkify(text):
+    """Convert escaped text emails, URLs, and Irish-style phone numbers into HTML links."""
+    placeholders = []
+
+    def stash(replacement):
+        token = f"__LINKIFY_{len(placeholders)}__"
+        placeholders.append(replacement)
+        return token
+
+    def split_trailing_punctuation(value):
+        trailing = ""
+        while value and value[-1] in ".,;:!?":
+            trailing = value[-1] + trailing
+            value = value[:-1]
+        open_parens = value.count("(")
+        close_parens = value.count(")")
+        while value.endswith(")") and close_parens > open_parens:
+            trailing = ")" + trailing
+            value = value[:-1]
+            close_parens -= 1
+        return value, trailing
+
+    def replace_email(match):
+        email = match.group(0)
+        return stash(f'<a href="mailto:{email}">{email}</a>')
+
+    def replace_url(match):
+        url = match.group(0)
+        trimmed_url, trailing = split_trailing_punctuation(url)
+        href = trimmed_url if trimmed_url.startswith(("http://", "https://")) else f"https://{trimmed_url}"
+        link = (
+            f'<a href="{href}" target="_blank" rel="noopener noreferrer">'
+            f"{trimmed_url}</a>"
+        )
+        return f"{stash(link)}{trailing}"
+
+    def to_tel_href(display):
+        """Normalize matched phone display text to an Irish tel: href."""
+        digits = DIGITS_ONLY_PATTERN.sub("", display)
+        if digits.startswith("353"):
+            national = digits[3:]
+            if national.startswith("0"):
+                national = national[1:]
+            if national:
+                return f"+353{national}"
+            return None
+        if digits.startswith("0"):
+            national = digits[1:]
+            if national:
+                return f"+353{national}"
+        return None
+
+    def replace_phone(match):
+        phone = match.group(0)
+        href = to_tel_href(phone)
+        if not href:
+            return phone
+        return stash(f'<a href="tel:{href}">{phone}</a>')
+
+    linked = EMAIL_PATTERN.sub(replace_email, text)
+    linked = URL_PATTERN.sub(replace_url, linked)
+    linked = PHONE_PATTERN.sub(replace_phone, linked)
+
+    for i, replacement in enumerate(placeholders):
+        linked = linked.replace(f"__LINKIFY_{i}__", replacement)
+    return linked
+
+
 def build_html_content(pages_text):
     parts = []
     for i, lines in enumerate(pages_text, start=1):
@@ -190,7 +267,7 @@ def build_html_content(pages_text):
         parts.append(f"<h2>Page {i}</h2>")
         for line in lines:
             escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            parts.append(f"<p>{escaped}</p>")
+            parts.append(f"<p>{linkify(escaped)}</p>")
     return "\n".join(parts)
 
 
