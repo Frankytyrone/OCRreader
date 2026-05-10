@@ -56,11 +56,11 @@ OCR_PROMPT = (
 MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<>\"']+", re.IGNORECASE)
-PHONE_WITH_COUNTRY_OPTIONAL_TRUNK = r"\+353\s*\(0\)\s*\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
-PHONE_WITH_COUNTRY = r"\+353[\s-]?\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
-PHONE_LOCAL = r"0\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
+PHONE_WITH_COUNTRY_OPTIONAL_TRUNK_PATTERN = r"\+353\s*\(0\)\s*\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
+PHONE_WITH_COUNTRY_PATTERN = r"\+353[\s-]?\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
+PHONE_LOCAL_PATTERN = r"0\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
 PHONE_PATTERN = re.compile(
-    rf"(?<!\w)(?:{PHONE_WITH_COUNTRY_OPTIONAL_TRUNK}|{PHONE_WITH_COUNTRY}|{PHONE_LOCAL})(?!\w)"
+    rf"(?<!\w)(?:{PHONE_WITH_COUNTRY_OPTIONAL_TRUNK_PATTERN}|{PHONE_WITH_COUNTRY_PATTERN}|{PHONE_LOCAL_PATTERN})(?!\w)"
 )
 
 
@@ -154,6 +154,7 @@ def ocr_images(images):
 
 
 def linkify(text):
+    """Convert escaped text emails, URLs, and Irish-style phone numbers into HTML links."""
     placeholders = []
 
     def stash(replacement):
@@ -166,9 +167,12 @@ def linkify(text):
         while value and value[-1] in ".,;:!?":
             trailing = value[-1] + trailing
             value = value[:-1]
-        while value.endswith(")") and value.count(")") > value.count("("):
+        open_parens = value.count("(")
+        close_parens = value.count(")")
+        while value.endswith(")") and close_parens > open_parens:
             trailing = ")" + trailing
             value = value[:-1]
+            close_parens -= 1
         return value, trailing
 
     def replace_email(match):
@@ -186,6 +190,7 @@ def linkify(text):
         return f"{stash(link)}{trailing}"
 
     def to_tel_href(display):
+        """Normalize matched phone display text to an Irish tel: href."""
         digits = re.sub(r"\D", "", display)
         if digits.startswith("353"):
             national = digits[3:]
