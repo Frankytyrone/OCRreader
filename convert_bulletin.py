@@ -53,6 +53,8 @@ OCR_PROMPT = (
     "languages faithfully without translating. Preserve the layout and structure as closely as possible using plain text spacing."
 )
 
+MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
+
 
 def pdf_to_images(pdf_path):
     return convert_from_path(pdf_path, dpi=150)
@@ -103,9 +105,9 @@ def ocr_images(images):
                     }
                 ],
             )
-        except Exception:
+        except Exception as e:
             if use_github_models and openai_api_key:
-                print("  GitHub Models failed, falling back to OpenAI gpt-4o-mini...")
+                print(f"  GitHub Models failed ({e}), falling back to OpenAI gpt-4o-mini...")
                 client = OpenAI(api_key=openai_api_key)
                 use_github_models = False
                 provider_used = "OpenAI fallback"
@@ -129,7 +131,7 @@ def ocr_images(images):
         text = response.choices[0].message.content or ""
         lines = [
             line for line in text.splitlines()
-            if line.strip() and not re.match(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$", line)
+            if line.strip() and not MARKDOWN_FENCE_PATTERN.match(line)
         ]
         pages_text.append(lines)
     return pages_text, provider_used
