@@ -61,11 +61,12 @@ def pdf_to_images(pdf_path):
 
 
 def ocr_images(images):
+    """Run OCR across images and return (pages_text, provider_summary)."""
     github_token = os.environ.get("GITHUB_TOKEN")
     openai_api_key = os.environ.get("OPENAI_API_KEY")
 
     if not github_token and not openai_api_key:
-        print("Error: Neither GITHUB_TOKEN nor OPENAI_API_KEY is set. Please set at least one API key.")
+        print("Error: Neither GITHUB_TOKEN nor OPENAI_API_KEY is set. Please set at least one credential.")
         sys.exit(1)
 
     use_github_models = bool(github_token)
