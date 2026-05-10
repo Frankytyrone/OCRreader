@@ -54,8 +54,10 @@ jobs:
               if [[ "$commit_ts" -gt "$newest_ts" ]]; then
                 newest_ts="$commit_ts"
                 newest_file="$file_path"
-              elif [[ "$commit_ts" -eq "$newest_ts" && "$file_path" > "$newest_file" ]]; then
-                newest_file="$file_path"
+              elif [[ "$commit_ts" -eq "$newest_ts" ]]; then
+                if [[ "$(basename "$file_path")" > "$(basename "$newest_file")" ]]; then
+                  newest_file="$file_path"
+                fi
               fi
             done
 
