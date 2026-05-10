@@ -27,7 +27,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        run: pip install openai pdf2image Pillow
+        run: pip install openai pdf2image Pillow mistralai
 
       - name: Get today's date
         id: date
@@ -47,6 +47,7 @@ jobs:
       - name: Run OCR and generate HTML
         run: python convert_bulletin.py "${{ steps.find_pdf.outputs.pdf_file }}" ${{ steps.date.outputs.today }}
         env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
