@@ -42,7 +42,7 @@ class LinkifyTests(unittest.TestCase):
         self.assertIn("&amp;", html)
         self.assertIn("&lt;safe&gt;", html)
         self.assertIn(
-            '<a href="https://www.example.com" target="_blank" rel="noopener noreferrer">www.example.com</a>',
+            '<p>Website: <a href="https://www.example.com" target="_blank" rel="noopener noreferrer">www.example.com</a> &amp; &lt;safe&gt;</p>',
             html,
         )
 
