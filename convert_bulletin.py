@@ -55,7 +55,8 @@ OCR_PROMPT = (
 
 MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<>\"']+", re.IGNORECASE)
+URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<>\"]+", re.IGNORECASE)
+DIGITS_ONLY_PATTERN = re.compile(r"\D")
 PHONE_WITH_COUNTRY_OPTIONAL_TRUNK_PATTERN = r"\+353\s*\(0\)\s*\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
 PHONE_WITH_COUNTRY_PATTERN = r"\+353[\s-]?\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
 PHONE_LOCAL_PATTERN = r"0\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
@@ -191,7 +192,7 @@ def linkify(text):
 
     def to_tel_href(display):
         """Normalize matched phone display text to an Irish tel: href."""
-        digits = re.sub(r"\D", "", display)
+        digits = DIGITS_ONLY_PATTERN.sub("", display)
         if digits.startswith("353"):
             national = digits[3:]
             if national.startswith("0"):
