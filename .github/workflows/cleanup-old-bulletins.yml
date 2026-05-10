@@ -51,13 +51,17 @@ jobs:
                 commit_ts=0
               fi
 
-              if [[ "$commit_ts" -gt "$newest_ts" ]]; then
-                newest_ts="$commit_ts"
+              local mtime_ts
+              mtime_ts=$(stat -c %Y "$file_path")
+
+              local candidate_ts="$commit_ts"
+              if [[ "$mtime_ts" -gt "$candidate_ts" ]]; then
+                candidate_ts="$mtime_ts"
+              fi
+
+              if [[ "$candidate_ts" -gt "$newest_ts" ]]; then
+                newest_ts="$candidate_ts"
                 newest_file="$file_path"
-              elif [[ "$commit_ts" -eq "$newest_ts" ]]; then
-                if [[ "$(basename "$file_path")" > "$(basename "$newest_file")" ]]; then
-                  newest_file="$file_path"
-                fi
               fi
             done
 
