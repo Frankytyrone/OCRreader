@@ -55,7 +55,7 @@ OCR_PROMPT = (
 
 MARKDOWN_FENCE_PATTERN = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*$")
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<]+", re.IGNORECASE)
+URL_PATTERN = re.compile(r"(?<!@)\b(?:https?://|www\.)[^\s<>\"']+", re.IGNORECASE)
 PHONE_WITH_COUNTRY_OPTIONAL_TRUNK = r"\+353\s*\(0\)\s*\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
 PHONE_WITH_COUNTRY = r"\+353[\s-]?\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
 PHONE_LOCAL = r"0\d{1,2}(?:[\s-]?\d{3,4}){1,2}"
