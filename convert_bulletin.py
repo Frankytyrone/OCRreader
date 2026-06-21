@@ -15,20 +15,36 @@ from pdf2image import convert_from_path
 
 CSS = """
 <style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
   .scrollable-viewer {
-    max-width: 800px;
-    margin: 0 auto;
+    max-width: 100%;
+    margin: 0;
     background: #ffffff;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
     font-family: Georgia, serif;
     font-size: 16px;
     line-height: 1.7;
-    padding: 32px 40px;
+    padding: 16px 20px;
+  }
+  .page-label {
+    font-size: 1em;
+    font-weight: 700;
+    margin: 1.2em 0 0.35em;
+    color: #0f2b5b;
+  }
+  .page-label:first-child {
+    margin-top: 0;
   }
   p {
     margin: 4px 0;
+  }
+  hr {
+    margin: 1em 0;
+    border: none;
+    border-top: 1px solid #ddd;
   }
 </style>
 """
@@ -262,7 +278,7 @@ def build_html_content(pages_text):
     for i, lines in enumerate(pages_text, start=1):
         if i > 1:
             parts.append("<hr>")
-        parts.append(f"<h2>Page {i}</h2>")
+        parts.append(f'<p class="page-label">Page {i}</p>')
         for line in lines:
             escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts.append(f"<p>{linkify(escaped)}</p>")
