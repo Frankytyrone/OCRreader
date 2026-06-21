@@ -25,8 +25,6 @@ CSS = """
     font-family: Georgia, serif;
     font-size: 16px;
     line-height: 1.7;
-    max-height: 90vh;
-    overflow-y: auto;
     padding: 32px 40px;
   }
   p {
