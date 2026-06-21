@@ -57,16 +57,19 @@ jobs:
       - name: Commit the generated HTML back to the repo
         if: steps.find_pdf.outputs.skipped != 'true'
         run: |
+          TODAY="bulletin-${{ steps.date.outputs.today }}.html"
           if ls bulletin-*.html 1>/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            # Remove any old bulletin HTML files tracked by git
-            git ls-files bulletin-*.html | xargs -r git rm -f
-            # Stage the newly generated HTML
-            git add "bulletin-${{ steps.date.outputs.today }}.html"
-            # Remove the processed PDF from the repo
+            # Remove old bulletin HTML files, but keep today's file (already overwritten by OCR)
+            for f in $(git ls-files 'bulletin-*.html'); do
+              if [ "$f" != "$TODAY" ]; then
+                git rm -f "$f"
+              fi
+            done
+            git add "$TODAY"
             git rm -f "${{ steps.find_pdf.outputs.pdf_file }}" 2>/dev/null || true
-            git diff --staged --quiet || git commit -m "Auto-generate bulletin-${{ steps.date.outputs.today }}.html"
+            git diff --staged --quiet || git commit -m "Auto-generate $TODAY"
             git pull --rebase
             git push
           else
