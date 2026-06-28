@@ -68,6 +68,25 @@ CSS = """
   }
   strong { color: #0f2b5b; }
   a { color: #1d4ed8; }
+  table.b-table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.5em 0;
+    font-size: 0.95em;
+  }
+  table.b-table td, table.b-table th {
+    border: 1px solid #d0d8e8;
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.b-table th {
+    background: #eef3fb;
+    color: #0f2b5b;
+  }
+  table.b-table tr:nth-child(even) td {
+    background: #f7f9fd;
+  }
 </style>
 """
 
@@ -306,25 +325,88 @@ def _escape_html(value):
     return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def render_line(line):
-    """Turn one OCR/markdown line into clean HTML, or '' to skip it."""
-    # Drop image placeholders like ![img-0.jpeg](img-0.jpeg)
-    line = IMAGE_MD_PATTERN.sub("", line).rstrip()
-    if not line.strip():
-        return ""
-    if HR_MD_PATTERN.match(line):
-        return "<hr>"
-    heading = HEADING_MD_PATTERN.match(line)
-    if heading:
-        level = min(len(heading.group(1)), 3)
-        tag = {1: "h2", 2: "h3", 3: "h4"}[level]
-        css_class = {1: "b-title", 2: "b-head", 3: "b-sub"}[level]
-        text = _escape_html(heading.group(2).strip())
-        text = BOLD_MD_PATTERN.sub(r"<strong>\1</strong>", text)
-        return f'<{tag} class="{css_class}">{linkify(text)}</{tag}>'
-    text = _escape_html(line)
+def _render_inline(text):
+    """Escape one line of OCR text and apply bold + links."""
+    text = _escape_html(text)
     text = BOLD_MD_PATTERN.sub(r"<strong>\1</strong>", text)
-    return f"<p>{linkify(text)}</p>"
+    return linkify(text)
+
+
+def _is_table_row(line):
+    s = line.strip()
+    return s.startswith("|") and s.endswith("|") and s.count("|") >= 2
+
+
+def _is_table_separator(line):
+    # A markdown table separator like | --- | --- | (only dashes/colons/pipes).
+    s = line.strip()
+    return bool(re.fullmatch(r"\|?[\s:\-|]+\|?", s)) and "-" in s
+
+
+def _table_cells(line):
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _render_table(rows):
+    """Turn a block of markdown table rows into a styled HTML table."""
+    has_header = any(_is_table_separator(r) for r in rows)
+    body = [r for r in rows if not _is_table_separator(r)]
+    if not body:
+        return ""
+    out = ['<table class="b-table">']
+    for idx, row in enumerate(body):
+        tag = "th" if has_header and idx == 0 else "td"
+        cells = _table_cells(row)
+        out.append("<tr>" + "".join(f"<{tag}>{_render_inline(c)}</{tag}>" for c in cells) + "</tr>")
+    out.append("</table>")
+    return "\n".join(out)
+
+
+def render_markdown_lines(lines):
+    """Render one page's OCR lines, grouping markdown tables into HTML tables."""
+    parts = []
+    i = 0
+    total = len(lines)
+    while i < total:
+        line = IMAGE_MD_PATTERN.sub("", lines[i]).rstrip()
+        if not line.strip():
+            i += 1
+            continue
+        if _is_table_row(line):
+            block = []
+            while i < total:
+                row = IMAGE_MD_PATTERN.sub("", lines[i]).rstrip()
+                if _is_table_row(row):
+                    block.append(row)
+                    i += 1
+                else:
+                    break
+            table_html = _render_table(block)
+            if table_html:
+                parts.append(table_html)
+            continue
+        if HR_MD_PATTERN.match(line):
+            parts.append("<hr>")
+            i += 1
+            continue
+        heading = HEADING_MD_PATTERN.match(line)
+        if heading:
+            level = min(len(heading.group(1)), 3)
+            tag = {1: "h2", 2: "h3", 3: "h4"}[level]
+            css_class = {1: "b-title", 2: "b-head", 3: "b-sub"}[level]
+            parts.append(
+                f'<{tag} class="{css_class}">{_render_inline(heading.group(2).strip())}</{tag}>'
+            )
+            i += 1
+            continue
+        parts.append(f"<p>{_render_inline(line)}</p>")
+        i += 1
+    return parts
 
 
 def build_html_content(pages_text):
@@ -333,10 +415,7 @@ def build_html_content(pages_text):
         if i > 1:
             parts.append("<hr>")
         parts.append(f'<p class="page-label">Page {i}</p>')
-        for line in lines:
-            html_line = render_line(line)
-            if html_line:
-                parts.append(html_line)
+        parts.extend(render_markdown_lines(lines))
     return "\n".join(parts)
 
 
