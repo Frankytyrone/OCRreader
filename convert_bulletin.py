@@ -46,6 +46,28 @@ CSS = """
     border: none;
     border-top: 1px solid #ddd;
   }
+  .b-title {
+    font-size: 1.35em;
+    font-weight: 700;
+    color: #0f2b5b;
+    margin: 0.9em 0 0.3em;
+    border-bottom: 2px solid #c8d6f0;
+    padding-bottom: 0.15em;
+  }
+  .b-head {
+    font-size: 1.15em;
+    font-weight: 700;
+    color: #134e9c;
+    margin: 0.75em 0 0.25em;
+  }
+  .b-sub {
+    font-size: 1.02em;
+    font-weight: 700;
+    color: #1f6f4a;
+    margin: 0.6em 0 0.2em;
+  }
+  strong { color: #0f2b5b; }
+  a { color: #1d4ed8; }
 </style>
 """
 
@@ -273,6 +295,38 @@ def linkify(text):
     return linked
 
 
+# Markdown clean-up patterns for beautifying the OCR output.
+IMAGE_MD_PATTERN = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+BOLD_MD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
+HEADING_MD_PATTERN = re.compile(r"^(#{1,6})\s+(.*)$")
+HR_MD_PATTERN = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
+
+
+def _escape_html(value):
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def render_line(line):
+    """Turn one OCR/markdown line into clean HTML, or '' to skip it."""
+    # Drop image placeholders like ![img-0.jpeg](img-0.jpeg)
+    line = IMAGE_MD_PATTERN.sub("", line).rstrip()
+    if not line.strip():
+        return ""
+    if HR_MD_PATTERN.match(line):
+        return "<hr>"
+    heading = HEADING_MD_PATTERN.match(line)
+    if heading:
+        level = min(len(heading.group(1)), 3)
+        tag = {1: "h2", 2: "h3", 3: "h4"}[level]
+        css_class = {1: "b-title", 2: "b-head", 3: "b-sub"}[level]
+        text = _escape_html(heading.group(2).strip())
+        text = BOLD_MD_PATTERN.sub(r"<strong>\1</strong>", text)
+        return f'<{tag} class="{css_class}">{linkify(text)}</{tag}>'
+    text = _escape_html(line)
+    text = BOLD_MD_PATTERN.sub(r"<strong>\1</strong>", text)
+    return f"<p>{linkify(text)}</p>"
+
+
 def build_html_content(pages_text):
     parts = []
     for i, lines in enumerate(pages_text, start=1):
@@ -280,8 +334,9 @@ def build_html_content(pages_text):
             parts.append("<hr>")
         parts.append(f'<p class="page-label">Page {i}</p>')
         for line in lines:
-            escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            parts.append(f"<p>{linkify(escaped)}</p>")
+            html_line = render_line(line)
+            if html_line:
+                parts.append(html_line)
     return "\n".join(parts)
 
 
@@ -345,7 +400,13 @@ def main():
     with open(output_filename, "w", encoding="utf-8") as f:
         f.write(html)
 
-    print(f"\nDone! Output saved to: {output_filename}")
+    # Also write a stable filename so the website embed never needs a date.
+    # Point your site's iframe at bulletin-latest.html and it auto-updates.
+    latest_filename = "bulletin-latest.html"
+    with open(latest_filename, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print(f"\nDone! Output saved to: {output_filename} (and {latest_filename})")
     print(f"Summary: Processed {len(pages_text)} page(s) using {provider_used}.")
 
 
